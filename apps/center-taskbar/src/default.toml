@@ -1,0 +1,2 @@
+# Milliseconds between taskbar layout refreshes (minimum 10).
+poll_ms = 100

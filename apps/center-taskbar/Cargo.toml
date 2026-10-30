@@ -1,0 +1,21 @@
+[package]
+name = "center-taskbar"
+description = "Center Windows 10 taskbar buttons or enable native Windows 11 alignment"
+license.workspace = true
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+taskbar-kit = { path = "../../crates/taskbar-kit" }
+toml.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true, features = [
+    "Win32_System_Console",
+    "Win32_System_Ole",
+    "Win32_System_Variant",
+    "Win32_UI_HiDpi",
+] }

@@ -1,0 +1,6 @@
+[general]
+# Global toggle hotkey. Function keys, letters, and ctrl/shift/alt modifiers are supported.
+hotkey = "ctrl+alt+f9"
+
+# Extend normal windows snapped to the hidden taskbar edge, then restore them on show.
+resize_snapped = true

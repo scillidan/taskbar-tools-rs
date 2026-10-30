@@ -1,0 +1,7 @@
+# Poll position, monitor/taskbar changes, and theme at this interval.
+poll_ms = 100
+icon_size = 24
+# Optional .ico files, relative to start-button.exe or absolute.
+# Empty paths use the built-in four-pane logo.
+light_icon = ""
+dark_icon = ""
