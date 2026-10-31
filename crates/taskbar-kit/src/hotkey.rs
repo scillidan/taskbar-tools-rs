@@ -39,7 +39,7 @@ pub fn vk_of_key(key: Key) -> Option<VIRTUAL_KEY> {
 }
 
 /// A registered set of label -> combo hotkeys. Ids run from 1, matching the
-/// `id -> label` slice handed to [`crate::tray::Tray::run`].
+/// `id -> label` slice handed to [`crate::message::run`].
 pub struct Hotkeys {
     labels: Vec<String>,
 }

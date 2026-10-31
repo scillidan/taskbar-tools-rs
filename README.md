@@ -1,70 +1,81 @@
 # taskbar-tools-rs
 
-Small, independent Rust utilities for the Windows 10/11 Explorer taskbar.
-Arch Linux has no matching Explorer surface, so these apps report that the
-feature is unavailable there instead of pretending to support another shell.
+Configuration-driven Windows 10/11 Explorer taskbar tools in one process:
 
-| App | Purpose | Windows 10 | Windows 11 |
-| --- | --- | --- | --- |
-| `hidden-taskbar` | Toggle the taskbar on the foreground monitor | Win32 | Win32 |
-| `center-taskbar` | Center application buttons | UIA/Win32 | native taskbar alignment |
-| `tray-sort` | Sort visible and overflow notification icons separately | UIA | UIA |
-| `taskbar-sort` | Sort application buttons | UIA | UIA |
-| `start-button` | Theme-aware custom Start icon overlay | UIA + overlay | UIA + overlay |
+- **TaskbarPin / TrayPin**: automatically move configured application and tray
+  items to the head, preserving the relative order of everything else.
+- **CenterTaskbar**: center legacy taskbar buttons, or use native centered
+  alignment on Windows 11.
+- **StartButton**: theme-aware Start-button overlay with UIA click forwarding.
+- **HiddenTaskbar**: hide/show the taskbar on the foreground window's monitor.
 
-## Build and run
+Run the single `taskbar-tools-rs.exe`. Its one tray icon provides editors for all
+five configs, manual TaskbarPin/TrayPin tests and Quit. Quit stops the modules
+and restores their temporary visual changes.
 
-```sh
-cargo build --release
-cargo test --workspace
-just dist
+## Configuration
+
+Each module has an independent TOML file next to the executable. Missing files
+are created from defaults. Set `enabled = false` in a module's configuration to
+disable it without disabling the other modules.
+
+- `taskbar-pin.toml`: `enabled`, `poll_ms`, `pin`.
+- `tray-pin.toml`: `enabled`, `poll_ms`, `pin`. Only visible tray icons are
+  handled; use Explorer's own overflow UI for hidden icons.
+- `center-taskbar.toml`: `enabled`, `poll_ms`.
+- `start-button.toml`: `enabled`, polling, icon size and optional `.ico`/`.png`
+  icons. Relative paths resolve beside the executable; bundled defaults use
+  `assets/black_Lake.png` and `assets/white_Lake.png`.
+- `hidden-taskbar.toml`: `general.enabled`, `general.hotkey`,
+  `general.resize_snapped`.
+
+Pin matching accepts a stable AutomationId, display name, executable filename,
+or executable stem without `.exe`; case is ignored. Missing pinned items are
+skipped. Example:
+
+```toml
+# taskbar-pin.toml
+enabled = true
+poll_ms = 750
+pin = ["brave", "doublecmd", "sublime_text"]
 ```
 
-`just dist` creates one zip per app under `dist/`. Each app has its own tray
-icon, TOML config, single-instance guard, autostart toggle and normal **Exit**.
-Config and custom-order state live beside the exe; defaults are created on first
-normal launch. No app restarts or injects into Explorer, terminates user apps,
-or edits undocumented binary registry state.
+The pin files reload automatically. CenterTaskbar reloads its enable switch and
+poll interval. StartButton reloads its enable switch; other visual changes take
+effect on process restart. HiddenTaskbar reloads its enable switch, hotkey and
+snapped-window setting. HiddenTaskbar is the only module with a hotkey; its
+default is `Ctrl+Alt+F9`.
 
-- **HiddenTaskbar:** default hotkey is `Ctrl+Alt+F9`; the tray menu also has
-  **Toggle foreground** and **Restore all**. Normal exit restores hidden bars and
-  snapped windows it moved.
-- **CenterTaskbar:** uses `MSTaskListWClass` only when that legacy surface is
-  present; otherwise it uses Explorer's native centered alignment. Restart after
-  changing `poll_ms`.
-- **TraySort / TaskbarSort:** `mode` is `alphabetical`,
-  `alphabetical-desc`, or `custom`. `lock_head`/`lock_tail` accept case-insensitive
-  UIA automation IDs or display names from `--dump`. System tray icons stay last.
-  Config changes are reloaded; custom order is saved with a settling delay.
-  Disable mouse movement with `apply = false` or the **Apply sorting** menu item.
-- **StartButton:** `light_icon` and `dark_icon` are optional `.ico` paths, relative
-  to the exe or absolute. Empty values use the built-in four-pane logo. Restart
-  after changing icon files or `icon_size`.
+The hidden tray overflow is temporarily opened and restored for an available
+move. Physical dragging still depends on the current Explorer build allowing
+that reordering. CenterTaskbar capability-detects legacy versus native layout;
+it never restarts Explorer. When disabled, CenterTaskbar restores a native
+alignment setting that it changed, StartButton removes its overlays, and
+HiddenTaskbar restores its temporary window/taskbar changes.
 
-## Read-only diagnostics
+## Diagnostics
 
-Run these from a terminal before enabling a sort:
+```powershell
+# Read-only TOML-friendly taskbar/tray identities.
+.\taskbar-tools-rs.exe --dump
 
-```sh
-taskbar-sort.exe --inspect
-taskbar-sort.exe --dump
-tray-sort.exe --inspect
-tray-sort.exe --dump
-start-button.exe --inspect
-center-taskbar.exe --inspect
+# Read-only taskbar, tray, centering and Start-button discovery.
+.\taskbar-tools-rs.exe --inspect
+
+# Run one manual pin pass for both modules, even when automatic pinning is disabled.
+.\taskbar-tools-rs.exe --once
 ```
 
-`--inspect` prints UIA identities and physical-pixel rectangles without moving
-windows or icons. `--dump` emits TOML identities suitable for the adjacent custom
-state file and for choosing lock entries. Overflow contents are enumerated only
-when the overflow window is already open; diagnostics never open it themselves.
+Diagnostics work in an existing terminal or captured pipe; a console created by
+the daemon itself is hidden. One instance is allowed.
 
-`--once` on either sorting app is explicitly mutating: it performs physical mouse
-drags. Hidden overflow sorting likewise happens only while that window is open.
-This is the external-UIA boundary; reliable sorting while it is closed would
-require version-fragile Explorer integration that this project deliberately avoids.
+## Build
 
-The IME and clock styling ideas remain design-only. Replacing current XAML shell
-controls needs unsupported Explorer hooks rather than a stable external API.
+`cargo build --release`, `cargo test`, `cargo fmt --check`,
+`cargo clippy --all-targets -- -D warnings`, and `just dist` (uses `just` and
+PowerShell). Release uses LTO, one codegen unit and stripped symbols.
+`just dist` creates one `dist/taskbar-tools-rs.zip` containing the executable,
+README and five default configuration files.
 
-See `CHECKLIST.md` for automated versus physical verification.
+Styling taskbar IME/timestamp indicators is a separate, low-priority design
+task, not part of this implementation.

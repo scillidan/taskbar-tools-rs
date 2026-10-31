@@ -1,34 +1,22 @@
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
-$target = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { Join-Path $root 'target' }
-$apps = @(
-    @{ Name = 'hidden-taskbar'; Config = 'hidden-taskbar.toml' },
-    @{ Name = 'center-taskbar'; Config = 'src\default.toml' },
-    @{ Name = 'tray-sort'; Config = 'tray-sort.toml' },
-    @{ Name = 'taskbar-sort'; Config = 'taskbar-sort.toml' },
-    @{ Name = 'start-button'; Config = 'start-button.toml' }
-)
-foreach ($app in $apps) {
-    $name = $app.Name
-    $appDir = Join-Path $root "apps\$name"
-    $stage = Join-Path $root "dist\$name"
-    Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
-    New-Item $stage -ItemType Directory -Force | Out-Null
-    Copy-Item (Join-Path $target "release\$name.exe") $stage
-    Copy-Item (Join-Path $appDir $app.Config) (Join-Path $stage "$name.toml")
-    $readme = Join-Path $appDir 'README.md'
-    if (-not (Test-Path $readme)) { $readme = Join-Path $root 'README.md' }
-    Copy-Item $readme (Join-Path $stage 'README.md')
-    # A fresh exe copy can be briefly locked by the realtime malware scanner.
-    foreach ($attempt in 1..10) {
-        try {
-            Compress-Archive (Join-Path $stage '*') (Join-Path $root "dist\$name.zip") -Force
-            break
-        }
-        catch {
-            if ($attempt -eq 10) { throw }
-            Start-Sleep -Milliseconds 300
-        }
+$target = (cargo metadata --format-version 1 --no-deps | ConvertFrom-Json).target_directory
+$dist = Join-Path $root 'dist'
+$app = 'taskbar-tools-rs'
+$stage = Join-Path $dist $app
+Remove-Item $dist -Recurse -Force -ErrorAction SilentlyContinue
+New-Item $stage -ItemType Directory -Force | Out-Null
+Copy-Item (Join-Path $target "release\$app.exe") $stage
+Copy-Item (Join-Path $root 'README.md') $stage
+foreach ($config in @('taskbar-pin', 'tray-pin', 'center-taskbar', 'start-button', 'hidden-taskbar')) {
+    $source = if ($config -eq 'center-taskbar') {
+        Join-Path $root "apps\$app\src\center_taskbar\default.toml"
+    } else {
+        Join-Path $root "apps\$app\$config.toml"
     }
-    Write-Output "$name.zip"
+    Copy-Item $source (Join-Path $stage "$config.toml")
 }
+Copy-Item (Join-Path $root 'assets') (Join-Path $stage 'assets') -Recurse
+$zip = Join-Path $dist "$app.zip"
+Compress-Archive (Join-Path $stage '*') $zip -Force
+Write-Output $zip

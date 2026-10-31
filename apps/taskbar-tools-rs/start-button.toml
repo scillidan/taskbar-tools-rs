@@ -1,0 +1,8 @@
+# Poll position, monitor/taskbar changes, and theme at this interval.
+enabled = true
+poll_ms = 100
+icon_size = 24
+# Optional .ico/.png files, relative to taskbar-tools-rs.exe or absolute.
+# Empty paths use the built-in four-pane logo.
+light_icon = "assets/black_Lake.png"
+dark_icon = "assets/white_Lake.png"

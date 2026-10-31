@@ -1,0 +1,18 @@
+[package]
+name = "taskbar-tools-rs"
+description = "Configuration-driven Windows Explorer taskbar tools"
+license.workspace = true
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+image.workspace = true
+serde.workspace = true
+toml.workspace = true
+taskbar-kit = { path = "../../crates/taskbar-kit" }
+
+[target.'cfg(windows)'.dependencies]
+tray-icon.workspace = true
+windows = { workspace = true, features = ["Win32_System_Ole", "Win32_System_Variant", "Win32_UI_HiDpi"] }

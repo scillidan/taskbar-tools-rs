@@ -14,8 +14,8 @@ Windows 10/11 Explorer taskbar utilities. One app per tool plus `taskbar-kit`.
 
 - anyhow errors with context; background loops log and continue after individual failures.
 - Inline `#[cfg(test)]` tests; release: LTO, one codegen unit, stripped.
-- Tray toggles use a `> ` prefix. Daemons hide only a self-owned console so
-  release `--inspect`/`--dump` still work in terminals and captured pipes.
+- Daemons hide only a self-owned console so release `--inspect`/`--dump` still
+  work in terminals and captured pipes.
 - Keep UIA/layout/order logic separate from physical mouse/Win32 operations.
 - Windows 10 toolbar HWND techniques and Windows 11 XAML/UIA techniques must be
   capability-detected, never selected only by a hard-coded build-number table.
@@ -25,6 +25,6 @@ Windows 10/11 Explorer taskbar utilities. One app per tool plus `taskbar-kit`.
 ## Verification
 
 Every mutating app must restore its temporary visual changes on normal exit.
-Sorting gets a read-only `--inspect` and config-ready `--dump`. Update
+Pinning gets a read-only `--inspect` and config-ready `--dump`. Update
 `CHECKLIST.md` with actual OS/build and distinguish automated from physical checks.
 The low-priority IME/time styling remains design-only unless explicitly requested.

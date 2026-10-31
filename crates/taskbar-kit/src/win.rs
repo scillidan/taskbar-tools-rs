@@ -1,11 +1,8 @@
-//! Win32 helpers shared by all apps: single instance, HKCU Run autostart,
-//! message boxes, opening folders. Ported from keymap-rs `platform/windows.rs`.
+//! Win32 helpers shared by all apps: single instance, message boxes, consoles
+//! and input. Ported from keymap-rs `platform/windows.rs`.
 
 use anyhow::Result;
-use std::path::Path;
 use windows::Win32::Foundation::HANDLE;
-
-pub const RUN_KEY_PATH: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
 
 /// Named mutex; a second instance exits while this guard is alive.
 pub struct SingleInstanceGuard {
@@ -23,61 +20,6 @@ pub fn ensure_single_instance(name: &str) -> Result<SingleInstanceGuard> {
         anyhow::bail!("{name} is already running");
     }
     Ok(SingleInstanceGuard { _handle: handle })
-}
-
-/// Is `value_name` registered in HKCU Run?
-pub fn autostart_enabled(value_name: &str) -> bool {
-    use windows::core::HSTRING;
-    use windows::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_SZ};
-    let subkey = HSTRING::from(RUN_KEY_PATH);
-    let value = HSTRING::from(value_name);
-    let mut len: u32 = 0;
-    let r = unsafe {
-        RegGetValueW(
-            HKEY_CURRENT_USER,
-            &subkey,
-            &value,
-            RRF_RT_REG_SZ,
-            None,
-            None,
-            Some(&mut len),
-        )
-    };
-    r.is_ok() && len > 0
-}
-
-/// Register/remove the current exe in HKCU Run under `value_name`.
-pub fn set_autostart(value_name: &str, on: bool) -> Result<()> {
-    use windows::core::HSTRING;
-    use windows::Win32::System::Registry::{
-        RegCloseKey, RegDeleteValueW, RegOpenKeyExW, RegSetValueExW, HKEY_CURRENT_USER,
-        KEY_SET_VALUE, REG_SZ,
-    };
-    let subkey = HSTRING::from(RUN_KEY_PATH);
-    let value = HSTRING::from(value_name);
-    let mut key = windows::Win32::System::Registry::HKEY::default();
-    unsafe {
-        RegOpenKeyExW(HKEY_CURRENT_USER, &subkey, Some(0), KEY_SET_VALUE, &mut key).ok()?;
-        if on {
-            let exe = format!("\"{}\"", std::env::current_exe()?.display());
-            let wide: Vec<u16> = exe.encode_utf16().chain(std::iter::once(0)).collect();
-            RegSetValueExW(
-                key,
-                &value,
-                Some(0),
-                REG_SZ,
-                Some(std::slice::from_raw_parts(
-                    wide.as_ptr() as *const u8,
-                    wide.len() * 2,
-                )),
-            )
-            .ok()?;
-        } else {
-            let _ = RegDeleteValueW(key, &value);
-        }
-        let _ = RegCloseKey(key);
-    }
-    Ok(())
 }
 
 /// Show a modal error dialog.
@@ -139,29 +81,6 @@ pub fn log(app: &str, text: &str) {
         {
             let _ = writeln!(file, "{text}");
         }
-    }
-}
-
-/// Open a folder in Explorer.
-pub fn open_folder(path: &Path) {
-    let _ = std::process::Command::new("explorer.exe").arg(path).spawn();
-}
-
-/// Open a file or URL with its default handler.
-pub fn open_with_default(path: &Path) {
-    use windows::core::HSTRING;
-    use windows::Win32::UI::Shell::ShellExecuteW;
-    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
-    let file = HSTRING::from(path.to_string_lossy().as_ref());
-    unsafe {
-        ShellExecuteW(
-            None,
-            windows::core::w!("open"),
-            &file,
-            None,
-            None,
-            SW_SHOWNORMAL,
-        );
     }
 }
 

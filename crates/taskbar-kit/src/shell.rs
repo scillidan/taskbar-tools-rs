@@ -13,7 +13,7 @@ use windows::Win32::UI::Accessibility::{
     TreeScope_Children, TreeScope_Descendants, UIA_ButtonControlTypeId, UIA_InvokePatternId,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, FindWindowExW, GetClassNameW, GetWindowRect, IsWindowVisible,
+    EnumWindows, FindWindowExW, GetClassNameW, GetWindowRect,
 };
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -136,52 +136,28 @@ pub fn taskbars() -> Result<Vec<Taskbar>> {
     Ok(bars)
 }
 
-#[derive(Clone, Debug)]
-pub struct ShellWindow {
-    pub hwnd: HWND,
-    pub class_name: String,
-    pub rect: Rect,
-    pub visible: bool,
-}
-
-/// Overflow flyouts on the legacy and XAML notification areas.
-pub fn overflow_windows() -> Result<Vec<ShellWindow>> {
-    unsafe extern "system" fn visit(hwnd: HWND, data: LPARAM) -> BOOL {
-        let class = class_name(hwnd);
-        if class != "NotifyIconOverflowWindow" && class != "TopLevelWindowForOverflowXamlIsland" {
-            return true.into();
-        }
-        if let Ok(rect) = window_rect(hwnd) {
-            let windows = &mut *(data.0 as *mut Vec<ShellWindow>);
-            windows.push(ShellWindow {
-                hwnd,
-                class_name: class,
-                rect,
-                visible: visible_window(hwnd),
-            });
-        }
-        true.into()
-    }
-    let mut windows: Vec<ShellWindow> = Vec::new();
-    unsafe {
-        EnumWindows(Some(visit), LPARAM(&mut windows as *mut _ as isize))
-            .ok()
-            .context("EnumWindows failed")?;
-    }
-    Ok(windows)
-}
-
+// Fields drop in declaration order: release UIA before uninitializing COM.
 pub struct Automation {
     uia: IUIAutomation,
+    _com: ComGuard,
+}
+
+struct ComGuard;
+
+impl Drop for ComGuard {
+    fn drop(&mut self) {
+        unsafe { CoUninitialize() };
+    }
 }
 
 impl Automation {
     pub fn new() -> Result<Self> {
         unsafe {
             CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok()?;
+            let com = ComGuard;
             let uia = CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER)
                 .context("cannot create UI Automation")?;
-            Ok(Self { uia })
+            Ok(Self { uia, _com: com })
         }
     }
 
@@ -206,12 +182,6 @@ impl Automation {
         let condition = unsafe { self.uia.CreateTrueCondition()? };
         let array = unsafe { root.FindAll(TreeScope_Descendants, &condition)? };
         elements(&array)
-    }
-}
-
-impl Drop for Automation {
-    fn drop(&mut self) {
-        unsafe { CoUninitialize() };
     }
 }
 
@@ -312,10 +282,6 @@ pub fn window_rect(hwnd: HWND) -> Result<Rect> {
             .context("GetWindowRect failed")?
     };
     Ok(rect.into())
-}
-
-pub fn visible_window(hwnd: HWND) -> bool {
-    unsafe { IsWindowVisible(hwnd).as_bool() }
 }
 
 pub fn class_name(hwnd: HWND) -> String {

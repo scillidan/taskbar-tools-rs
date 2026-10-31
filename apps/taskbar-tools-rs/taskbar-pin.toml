@@ -1,0 +1,7 @@
+# Milliseconds between automatic pin checks (minimum 100).
+enabled = true
+poll_ms = 750
+
+# 顶置：按此顺序把已发现的应用移到头部，其他应用保持当前相对顺序。
+# 匹配 UIA ID、显示名称或可执行文件名（无需 .exe，不区分大小写）。
+pin = []

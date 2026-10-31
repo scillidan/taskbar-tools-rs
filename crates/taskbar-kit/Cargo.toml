@@ -1,6 +1,6 @@
 [package]
 name = "taskbar-kit"
-description = "Shared config, ordering and Win32 scaffolding for taskbar-tools-rs"
+description = "Shared config, pinning and Win32 scaffolding for taskbar-tools-rs"
 license.workspace = true
 authors.workspace = true
 version.workspace = true
@@ -13,4 +13,3 @@ toml.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 windows.workspace = true
-tray-icon.workspace = true

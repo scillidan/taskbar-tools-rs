@@ -1,0 +1,6 @@
+# Automatically reload this file and pin matching visible tray icons to the head.
+enabled = true
+poll_ms = 600
+# Match AutomationId, display name, executable filename, or stem without .exe.
+# Hidden overflow icons are managed by Explorer and are not modified.
+pin = []

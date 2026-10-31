@@ -1,18 +1,17 @@
 //! Shared scaffolding for the taskbar tools.
 
 pub mod config;
-pub mod icon;
 pub mod keys;
-pub mod order;
+pub mod pin;
 
+#[cfg(windows)]
+pub mod drag;
 #[cfg(windows)]
 pub mod hotkey;
 #[cfg(windows)]
+pub mod message;
+#[cfg(windows)]
 pub mod shell;
-#[cfg(windows)]
-pub mod sorting;
-#[cfg(windows)]
-pub mod tray;
 #[cfg(windows)]
 pub mod win;
 

@@ -4,6 +4,10 @@ use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
+pub const fn default_enabled() -> bool {
+    true
+}
+
 /// `path` if it exists, else the default TOML written to `path` first.
 pub fn load_or_create(path: &Path, default_toml: &str) -> Result<String> {
     if !path.exists() {
@@ -28,31 +32,6 @@ pub fn exe_dir_file(name: &str) -> Result<PathBuf> {
 
 pub fn modified(path: &Path) -> Option<SystemTime> {
     std::fs::metadata(path).and_then(|m| m.modified()).ok()
-}
-
-/// Replace a small TOML state file without exposing a partially written file.
-pub fn write_atomic(path: &Path, text: &str) -> Result<()> {
-    let tmp = path.with_extension("toml.tmp");
-    std::fs::write(&tmp, text).with_context(|| format!("cannot write {}", tmp.display()))?;
-    #[cfg(windows)]
-    {
-        use windows::core::HSTRING;
-        use windows::Win32::Storage::FileSystem::{
-            MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
-        };
-        unsafe {
-            MoveFileExW(
-                &HSTRING::from(tmp.as_os_str()),
-                &HSTRING::from(path.as_os_str()),
-                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
-            )
-            .ok()
-            .with_context(|| format!("cannot replace {}", path.display()))?;
-        }
-    }
-    #[cfg(not(windows))]
-    std::fs::rename(&tmp, path).with_context(|| format!("cannot replace {}", path.display()))?;
-    Ok(())
 }
 
 #[cfg(test)]

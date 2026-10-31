@@ -1,38 +1,71 @@
 # Verification checklist
 
-Automated results and physical desktop verification are recorded separately.
-Current development host: Windows 11 26H2, build 26300. Last run: 2026-10-26.
+Last run: 2026-10-29, Windows 11 build 26200.8246, vertical left taskbar.
 
-## Automated
+## Scope
 
-- [x] `cargo fmt --all -- --check`
-- [x] `cargo clippy --workspace --all-targets --offline -- -D warnings`
-- [x] `cargo test --workspace --offline` — 30 tests passed
-- [x] Linux `x86_64-unknown-linux-gnu` clippy, all targets, warnings denied
-- [x] release build is newer than all source files
-- [x] `just dist` — all five zip packages created under `dist/`
+- One `taskbar-tools-rs.exe` hosts TaskbarPin, TrayPin, CenterTaskbar,
+  StartButton and HiddenTaskbar.
+- Five independent TOML files provide per-module `enabled` switches.
+- One tray icon provides five config editors, manual Pin tests and Quit.
+- TrayPin handles only visible notification-area icons; Explorer owns overflow.
+- Orientation-dependent in-memory PNG padding is feasible but not implemented;
+  source images are unchanged and no padding values have been selected yet.
 
-## Read-only shell probes
+## Automated checks
 
-- [x] Release `--inspect` finds taskbars, Start, taskbar buttons and tray items
-- [x] Release diagnostics return exit code 0 and produce captured terminal output
-- [x] Release `--dump` emits taskbar and tray TOML identities
-- [x] CenterTaskbar selects `Native` on the current Windows 11 host
-- [x] StartButton UIA-first probe regression: no legacy-first `0xC0000005`
-- [ ] Vertical and horizontal taskbars return usable physical-pixel rectangles
-- [ ] Light/dark selection follows the effective taskbar theme on the real desktop
+- `cargo fmt --check`: passed.
+- `cargo clippy --workspace --all-targets -- -D warnings`: passed on Windows.
+- `cargo clippy --workspace --all-targets --target x86_64-unknown-linux-gnu -- -D warnings`: passed.
+- `cargo test --workspace`: 33 tests passed, including real PNG-to-HICON conversion.
+- `cargo build --release --workspace`: passed; one application executable.
+- `package.ps1`: passed; one `dist/taskbar-tools-rs.zip` with one exe, README,
+  five default TOML files and the assets directory.
+- `taskbar-tools-rs.exe --dump`: passed with exit code 0; Keypirinha was absent
+  from the visible tray and the old config's root `pin` was empty.
+- `taskbar-tools-rs.exe --inspect`: passed with exit code 0; observed legacy
+  taskbar bounds and the Start button.
+- Start overlay creation, repaint, stale cleanup and Quit were audited to use the
+  overlay HWND, never the taskbar HWND stored as the map key.
+- No non-ASCII or Chinese text occurs in Rust source.
 
-## Physical (user)
+## Physical verification required
 
-- [ ] HiddenTaskbar: hotkey affects only the foreground monitor; snapped windows restore
-- [ ] CenterTaskbar: Windows 10 horizontal/vertical and multiple DPI monitors
-- [ ] CenterTaskbar: Windows 11 native centering and normal-exit restoration
-- [ ] TraySort: visible/hidden alphabetical, reverse, custom and locked groups
-- [ ] TraySort: minimize-to-overflow delay and drag stability on a vertical taskbar
-- [ ] TaskbarSort: all three modes and locked groups
-- [ ] StartButton: four edges, light/dark, DPI changes and normal Start click
-- [ ] Every app: normal Exit removes temporary overlays and restores shell state
+### Tray and configuration
 
-No physical icon drag, taskbar hide, Start click, or native-alignment mutation was
-performed during automated verification. Hidden overflow remains untested because
-the read-only probe intentionally does not open it.
+- [ ] Each Edit command starts the configured `EDITOR`/`VISUAL` immediately,
+      without an Open With dialog or blocking the tray.
+- [ ] Test TaskbarPin/TrayPin works with automatic pinning disabled.
+- [ ] Quit returns promptly, removes Start overlays, restores HiddenTaskbar and
+      restores CenterTaskbar without changing pinned item order.
+
+### TaskbarPin / TrayPin
+
+- [ ] `pin` items move to the head in configured order after startup.
+- [ ] New and manually moved items return pinned items to the head without
+      sorting the remaining items.
+- [ ] `pin = ["keypirinha"]` works after Keypirinha is visibly present in the
+      system notification area; no overflow manipulation is expected.
+- [ ] `enabled = false` stops only the intended pin module.
+
+### CenterTaskbar
+
+- [ ] Vertical taskbar buttons center within the available bounds.
+- [ ] `enabled = false` and Quit restore the original list position.
+- [ ] Primary/secondary bars, four orientations and mixed DPI retain boundaries.
+
+### StartButton
+
+- [ ] The overlay paints on its first and subsequent synchronization passes.
+- [ ] Light/dark PNG and ICO icons render correctly; clicks open Start once.
+- [ ] `enabled = false` and Quit destroy only overlays, never Explorer windows.
+- [ ] Confirm horizontal and vertical padding before implementing in-memory
+      orientation-dependent image margins.
+
+### HiddenTaskbar
+
+- [ ] Configured hotkey toggles only the foreground window's monitor.
+- [ ] `general.enabled = false` and Quit restore taskbar/window changes.
+
+No daemon was launched and no taskbar/tray/window changes were made during
+automated checks.
