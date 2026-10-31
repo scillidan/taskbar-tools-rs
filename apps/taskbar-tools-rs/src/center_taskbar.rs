@@ -5,17 +5,22 @@ mod platform;
 
 #[cfg(windows)]
 use anyhow::Result;
+#[cfg(windows)]
+use std::time::{Duration, Instant};
 
 #[cfg(windows)]
 const APP_NAME: &str = "center-taskbar";
 
 #[cfg(windows)]
 pub fn run() -> Result<()> {
+    taskbar_kit::win::log(APP_NAME, "starting");
     let mut poll_ms = 100;
     let mut legacy = false;
     let mut legacy_lists = Vec::new();
     let mut native = None;
+    let mut native_check = Instant::now();
     platform::with_com(|| {
+        taskbar_kit::win::log(APP_NAME, "COM initialized");
         while !crate::shutting_down() {
             let result = (|| -> Result<()> {
                 let config = crate::config::load()?.center_taskbar;
@@ -28,11 +33,28 @@ pub fn run() -> Result<()> {
                     native = None;
                     return Ok(());
                 }
-                if !legacy && native.is_none() {
-                    if platform::discover()?.mode() == platform::Mode::Legacy {
-                        legacy = true;
-                    } else {
-                        native = Some(platform::NativeAlignment::enable()?);
+                if !legacy {
+                    if native.is_none() {
+                        if platform::discover()?.mode() == platform::Mode::Legacy {
+                            legacy = true;
+                            taskbar_kit::win::log(APP_NAME, "legacy taskbar mode");
+                        } else {
+                            native = Some(platform::NativeAlignment::enable()?);
+                            native_check = Instant::now();
+                            taskbar_kit::win::log(APP_NAME, "native taskbar alignment mode");
+                        }
+                    } else if native_check.elapsed() >= Duration::from_secs(1) {
+                        native_check = Instant::now();
+                        if platform::discover()?.mode() == platform::Mode::Legacy {
+                            if let Some(mut alignment) = native.take() {
+                                alignment.restore()?;
+                            }
+                            legacy = true;
+                            taskbar_kit::win::log(
+                                APP_NAME,
+                                "legacy task list appeared; switched from native alignment",
+                            );
+                        }
                     }
                 }
                 if legacy {

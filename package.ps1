@@ -4,8 +4,11 @@ $target = (cargo metadata --format-version 1 --no-deps | ConvertFrom-Json).targe
 $dist = Join-Path $root 'dist'
 $app = 'taskbar-tools-rs'
 $stage = Join-Path $dist $app
-if (Get-Process -Name $app -ErrorAction SilentlyContinue) {
-    throw "$app.exe is running; quit it before packaging."
+$stageExe = Join-Path $stage "$app.exe"
+$running = Get-Process -Name $app -ErrorAction SilentlyContinue |
+    Where-Object { $_.Path -eq $stageExe }
+if ($running) {
+    throw "$stageExe is running; quit it before packaging."
 }
 $saved = Join-Path ([IO.Path]::GetTempPath()) "$app-config-backup"
 Remove-Item $saved -Recurse -Force -ErrorAction SilentlyContinue

@@ -82,6 +82,7 @@ fn dump() -> anyhow::Result<()> {
 fn inspect() -> anyhow::Result<()> {
     let automation = taskbar_kit::shell::Automation::new()?;
     taskbar_pin::inspect(&automation)?;
+    drop(automation);
     center_taskbar::inspect()
 }
 
@@ -168,8 +169,10 @@ fn spawn(
         .name(name.to_string())
         .spawn(move || {
             while !shutting_down() {
-                if let Err(error) = run() {
-                    taskbar_kit::win::log(name, &format!("{error:#}"));
+                match std::panic::catch_unwind(run) {
+                    Ok(Ok(())) => {}
+                    Ok(Err(error)) => taskbar_kit::win::log(name, &format!("{error:#}")),
+                    Err(_) => taskbar_kit::win::log(name, "worker panicked"),
                 }
                 wait_ms(1000);
             }

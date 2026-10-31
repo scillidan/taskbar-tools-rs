@@ -74,6 +74,7 @@ pub fn with_com<T>(f: impl FnOnce() -> Result<T>) -> Result<T> {
 }
 
 pub fn discover() -> Result<Discovery> {
+    let _lock = taskbar_kit::shell::lock_ui();
     unsafe {
         let automation: IUIAutomation =
             CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER)
@@ -193,6 +194,7 @@ pub fn print_discovery(discovery: &Discovery) {
                     format_rect(layout.first),
                     format_rect(layout.last)
                 );
+                println!("    center action: {:?}", geometry::center(&layout));
             }
         }
     }
@@ -216,7 +218,7 @@ pub fn legacy_step() -> Result<Vec<usize>> {
     for list in discovery.bars.iter().flat_map(|bar| &bar.lists) {
         lists.push(list.hwnd.0 as usize);
         if let Err(error) = position_list(list) {
-            eprintln!("center-taskbar: position failed: {error:#}");
+            taskbar_kit::win::log("center-taskbar", &format!("position failed: {error:#}"));
         }
     }
     Ok(lists)

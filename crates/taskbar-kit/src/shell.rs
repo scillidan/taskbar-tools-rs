@@ -2,6 +2,7 @@
 
 use anyhow::{Context, Result};
 use std::fmt;
+use std::sync::{Mutex, MutexGuard};
 use windows::core::BSTR;
 use windows::Win32::Foundation::{BOOL, HWND, LPARAM, RECT};
 use windows::Win32::System::Com::{
@@ -134,6 +135,15 @@ pub fn taskbars() -> Result<Vec<Taskbar>> {
     Ok(bars)
 }
 
+// Explorer's legacy UIA provider can block when modules query it concurrently.
+static UIA_LOCK: Mutex<()> = Mutex::new(());
+
+pub fn lock_ui() -> MutexGuard<'static, ()> {
+    UIA_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 // Fields drop in declaration order: release UIA before uninitializing COM.
 pub struct Automation {
     uia: IUIAutomation,
@@ -160,16 +170,19 @@ impl Automation {
     }
 
     pub fn desktop_descendants(&self) -> Result<Vec<UiItem>> {
+        let _lock = lock_ui();
         let root = unsafe { self.uia.GetRootElement()? };
         self.descendants(&root)
     }
 
     pub fn descendants_of(&self, hwnd: HWND) -> Result<Vec<UiItem>> {
+        let _lock = lock_ui();
         let root = unsafe { self.uia.ElementFromHandle(hwnd)? };
         self.descendants(&root)
     }
 
     pub fn children_of(&self, hwnd: HWND) -> Result<Vec<UiItem>> {
+        let _lock = lock_ui();
         let root = unsafe { self.uia.ElementFromHandle(hwnd)? };
         let condition = unsafe { self.uia.CreateTrueCondition()? };
         let array = unsafe { root.FindAll(TreeScope_Children, &condition)? };
