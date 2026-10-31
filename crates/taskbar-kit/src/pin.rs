@@ -39,6 +39,7 @@ fn matches(item: &Item, configured: &str) -> bool {
         .id
         .split_once('|')
         .map_or(item.id.as_str(), |(id, _)| id);
+    let dotted_name = id.rsplit('.').next().unwrap_or(id);
     let file = id.rsplit(['\\', '/']).next().unwrap_or(id);
     let stem = file
         .len()
@@ -50,6 +51,7 @@ fn matches(item: &Item, configured: &str) -> bool {
         .unwrap_or(file);
     item.id.eq_ignore_ascii_case(configured)
         || id.eq_ignore_ascii_case(configured)
+        || dotted_name.eq_ignore_ascii_case(configured)
         || item.name.eq_ignore_ascii_case(configured)
         || stem.eq_ignore_ascii_case(configured)
 }
@@ -129,6 +131,21 @@ mod tests {
                 items[2].id.as_str(),
                 items[3].id.as_str()
             ])
+        );
+    }
+
+    #[test]
+    fn pins_match_the_last_component_of_dotted_app_ids() {
+        let items = vec![
+            Item::new(
+                "org.wezfurlong.wezterm|WezTerm - 1 window",
+                "WezTerm - 1 window",
+            ),
+            Item::new("Brave|Brave - 1 window", "Brave - 1 window"),
+        ];
+        assert_eq!(
+            pin_order(&items, &ids(&["wezterm"])),
+            ids(&[items[0].id.as_str(), items[1].id.as_str()])
         );
     }
 

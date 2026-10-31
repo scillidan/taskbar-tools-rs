@@ -3,7 +3,6 @@
 use crate::pin::{moves_to, Item};
 use crate::shell::{taskbars, Automation, Rect, UiItem};
 use anyhow::{Context, Result};
-use std::collections::HashSet;
 use windows::Win32::Foundation::POINT;
 use windows::Win32::UI::Accessibility::UIA_MenuItemControlTypeId;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
@@ -20,7 +19,6 @@ pub struct Group {
     pub key: String,
     pub items: Vec<UiItem>,
     pub vertical: bool,
-    pub grid: bool,
 }
 
 impl Group {
@@ -47,7 +45,6 @@ pub fn taskbar_groups(automation: &Automation) -> Result<Vec<Group>> {
             key: format!("taskbar-{:x}", bar.hwnd.0 as usize),
             items,
             vertical: bar.rect.height() > bar.rect.width(),
-            grid: false,
         });
     }
     Ok(groups)
@@ -55,6 +52,13 @@ pub fn taskbar_groups(automation: &Automation) -> Result<Vec<Group>> {
 
 fn taskbar_items(items: Vec<UiItem>) -> Vec<UiItem> {
     let lists = container_rects(&items, "MSTaskListWClass");
+    // CenterTaskbar moves the list offscreen while keeping its original width,
+    // so its right edge can overlap the notification area. The notification
+    // area is still the authoritative right boundary for taskbar applications.
+    let app_right = tray_items(items.iter())
+        .map(|item| item.rect.left)
+        .min()
+        .unwrap_or(i32::MAX);
     let mut items: Vec<UiItem> = items
         .into_iter()
         .filter(|item| {
@@ -64,42 +68,24 @@ fn taskbar_items(items: Vec<UiItem>) -> Vec<UiItem> {
                     && (item.class_name == "Taskbar.TaskListButtonAutomationPeer"
                         || item.automation_id.starts_with("Appid:")))
                     || ((item.is_button() || item.control_type == UIA_MenuItemControlTypeId.0)
-                        && within_any(item.rect, &lists)))
+                        && within_any(item.rect, &lists, app_right)))
         })
         .collect();
     items.sort_by_key(|item| (item.rect.top, item.rect.left));
     items
 }
 
-pub fn tray_groups(automation: &Automation) -> Result<Vec<Group>> {
-    let mut groups = Vec::new();
-    for bar in taskbars()? {
-        let items = tray_items(automation.descendants_of(bar.hwnd)?);
-        groups.push(Group {
-            key: format!("visible-{:x}", bar.hwnd.0 as usize),
-            items,
-            vertical: bar.rect.height() > bar.rect.width(),
-            grid: true,
-        });
-    }
-    Ok(groups)
-}
-
-fn tray_items(items: Vec<UiItem>) -> Vec<UiItem> {
-    let toolbars = container_rects(&items, "ToolbarWindow32");
-    let mut seen = HashSet::new();
-    let mut items: Vec<UiItem> = items
-        .into_iter()
-        .filter(|item| {
-            !item.offscreen
-                && !item.rect.is_empty()
-                && item.is_button()
-                && (item.automation_id == "NotifyItemIcon" || within_any(item.rect, &toolbars))
-        })
-        .filter(|item| seen.insert(item.identity()))
-        .collect();
-    items.sort_by_key(|item| (item.rect.top, item.rect.left));
-    items
+fn tray_items<'a>(items: impl Iterator<Item = &'a UiItem>) -> impl Iterator<Item = &'a UiItem> {
+    items.filter(|item| {
+        matches!(
+            item.class_name.as_str(),
+            "TrayNotifyWnd"
+                | "TrayInputIndicatorWClass"
+                | "TrayClockWClass"
+                | "TrayButton"
+                | "TrayShowDesktopButtonWClass"
+        )
+    })
 }
 
 fn container_rects(items: &[UiItem], class_name: &str) -> Vec<Rect> {
@@ -110,10 +96,13 @@ fn container_rects(items: &[UiItem], class_name: &str) -> Vec<Rect> {
         .collect()
 }
 
-fn within_any(rect: Rect, containers: &[Rect]) -> bool {
+fn within_any(rect: Rect, containers: &[Rect], right_limit: i32) -> bool {
     let (x, y) = rect.center();
     containers.iter().any(|container| {
-        x >= container.left && x < container.right && y >= container.top && y < container.bottom
+        x >= container.left
+            && x < container.right.min(right_limit)
+            && y >= container.top
+            && y < container.bottom
     })
 }
 
@@ -133,14 +122,7 @@ fn insertion_point(group: &Group, source_index: usize, target_index: usize) -> R
     if target_index < group.items.len() {
         let target = group.items[target_index].rect;
         let mut point = target.center();
-        if group.grid {
-            // The upper/left half selects insertion before the target in a grid.
-            if source_index < target_index {
-                point.0 = target.left + target.width() / 4;
-            } else {
-                point.0 = target.right - target.width() / 4;
-            }
-        } else if group.vertical {
+        if group.vertical {
             point.1 = if source_index < target_index {
                 target.bottom - target.height() / 4
             } else {
@@ -160,9 +142,7 @@ fn insertion_point(group: &Group, source_index: usize, target_index: usize) -> R
         .last()
         .context("cannot sort an empty group")?
         .rect;
-    Ok(if group.grid {
-        (last.right + last.width() / 2, last.center().1)
-    } else if group.vertical {
+    Ok(if group.vertical {
         (last.center().0, last.bottom + last.height() / 2)
     } else {
         (last.right + last.width() / 2, last.center().1)
@@ -283,20 +263,34 @@ mod tests {
     }
 
     #[test]
-    fn legacy_tray_buttons_are_scoped_to_toolbars() {
+    fn centered_task_list_does_not_include_tray_icons() {
         let button = windows::Win32::UI::Accessibility::UIA_ButtonControlTypeId.0;
         let items = vec![
             item(
-                "tray",
-                "1504",
-                "ToolbarWindow32",
+                "apps",
+                "",
+                "MSTaskListWClass",
                 50021,
-                rect(0, 1200, 62, 1280),
+                rect(1166, 0, 3412, 30),
             ),
-            item("Steam", "", "", button, rect(0, 1210, 24, 1234)),
-            item("Brave", "Brave", "", button, rect(0, 33, 62, 64)),
+            item(
+                "WezTerm",
+                "org.wezfurlong.wezterm",
+                "",
+                button,
+                rect(1169, 0, 1206, 30),
+            ),
+            item("Tray", "", "TrayNotifyWnd", 50033, rect(2282, 0, 2560, 30)),
+            item("Steam", "", "", button, rect(2306, 0, 2330, 30)),
+            item(
+                "Clock",
+                "",
+                "TrayClockWClass",
+                50000,
+                rect(2462, 0, 2507, 30),
+            ),
         ];
-        let ids: Vec<String> = tray_items(items).iter().map(UiItem::identity).collect();
-        assert_eq!(ids, ["Steam"]);
+        let ids: Vec<String> = taskbar_items(items).iter().map(UiItem::identity).collect();
+        assert_eq!(ids, ["org.wezfurlong.wezterm|WezTerm"]);
     }
 }

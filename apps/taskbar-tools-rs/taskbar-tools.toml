@@ -1,0 +1,20 @@
+# TaskbarPin: move configured taskbar buttons to the head in this order.
+# Match a full UIA identity, AutomationId, display name, executable name or
+# executable stem without .exe. Matching is case-insensitive.
+[taskbar-pin]
+enabled = true
+poll_ms = 750
+pin = []
+
+# CenterTaskbar: center legacy taskbar buttons. On Windows 11 XAML it enables
+# the native centered alignment instead.
+[center-taskbar]
+enabled = true
+poll_ms = 100
+
+# HiddenTaskbar: toggle the taskbar on the monitor of the foreground window.
+[hidden-taskbar]
+enabled = true
+hotkey = "ctrl+alt+f9"
+# Extend normal windows snapped to the hidden taskbar edge and restore them.
+resize_snapped = true

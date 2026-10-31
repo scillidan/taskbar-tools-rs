@@ -1,51 +1,66 @@
 # Verification checklist
 
-Last run: 2026-10-29, Windows 11 build 26200.8246, vertical left taskbar.
+Last run: 2026-11-01, Windows 11 build 26200.8246, horizontal primary taskbar
+(2560x30).
 
 ## Scope
 
-- One `taskbar-tools-rs.exe` hosts TaskbarPin, TrayPin, CenterTaskbar,
-  StartButton and HiddenTaskbar.
-- Five independent TOML files provide per-module `enabled` switches.
-- One tray icon provides five config editors, manual Pin tests and Quit.
-- TrayPin handles only visible notification-area icons; Explorer owns overflow.
-- Orientation-dependent in-memory PNG padding is feasible but not implemented;
-  source images are unchanged and no padding values have been selected yet.
+- One `taskbar-tools-rs.exe` hosts TaskbarPin, CenterTaskbar and HiddenTaskbar.
+- One grouped `taskbar-tools.toml` provides all per-module settings and enable
+  switches.
+- The tray menu matches `desktop-tools-rs`: Start with Windows, Reload config,
+  Edit config, Unpin all, Suspend/Resume hotkeys, separator, Quit.
+- StartButton is removed completely, including its module, configuration,
+  resources and packaged assets.
+- TrayPin is removed completely.
 
 ## Automated checks
 
 - `cargo fmt --check`: passed.
 - `cargo clippy --workspace --all-targets -- -D warnings`: passed on Windows.
 - `cargo clippy --workspace --all-targets --target x86_64-unknown-linux-gnu -- -D warnings`: passed.
-- `cargo test --workspace`: 33 tests passed, including real PNG-to-HICON conversion.
-- `cargo build --release --workspace`: passed; one application executable.
-- `package.ps1`: passed; one `dist/taskbar-tools-rs.zip` with one exe, README,
-  five default TOML files and the assets directory.
-- `taskbar-tools-rs.exe --dump`: passed with exit code 0; Keypirinha was absent
-  from the visible tray and the old config's root `pin` was empty.
-- `taskbar-tools-rs.exe --inspect`: passed with exit code 0; observed legacy
-  taskbar bounds and the Start button.
-- Start overlay creation, repaint, stale cleanup and Quit were audited to use the
-  overlay HWND, never the taskbar HWND stored as the map key.
-- No non-ASCII or Chinese text occurs in Rust source.
+- `cargo test --workspace`: 35 tests passed, including exact tray-menu labels,
+  grouped-config parsing, removed-section compatibility, legacy-config
+  migration, WezTerm dotted app-ID matching, centered task-list scoping and
+  plain-message dispatch.
+- `cargo build --release --workspace --target-dir <isolated>`: passed; one
+  application executable.
+- `package.ps1`: passed with the isolated target directory.
+- `taskbar-tools-rs.exe --dump`: passed with exit code 0 and listed only the
+  seven taskbar applications, not notification-area icons, while CenterTaskbar
+  had shifted the task list.
+- Packaging refuses to start while the packaged executable is running, and a
+  successful package preserves the deployed TOMLs in the staging directory.
+- `taskbar-tools-rs.exe --inspect`: passed with exit code 0; observed a legacy
+  horizontal taskbar and WezTerm's dotted AutomationId.
+- The repository contains no Chinese text in tracked source, configuration or
+  documentation files.
 
 ## Physical verification required
 
 ### Tray and configuration
 
-- [ ] Each Edit command starts the configured `EDITOR`/`VISUAL` immediately,
-      without an Open With dialog or blocking the tray.
-- [ ] Test TaskbarPin/TrayPin works with automatic pinning disabled.
-- [ ] Quit returns promptly, removes Start overlays, restores HiddenTaskbar and
-      restores CenterTaskbar without changing pinned item order.
+- [ ] Start with Windows toggles the HKCU Run value and survives a sign-out.
+- [ ] Reload config re-enables automatic pinning after Unpin all.
+- [ ] Edit config starts the configured `EDITOR`/`VISUAL` immediately, without
+      an Open With dialog or stalling the tray.
+- [ ] Unpin all stops automatic TaskbarPin ordering until Reload config or
+      restart; it never edits `taskbar-tools.toml`.
+- [ ] Suspend hotkeys disables the HiddenTaskbar hotkey; Resume hotkeys restores
+      it immediately.
+- [ ] Quit returns promptly, restores HiddenTaskbar and restores CenterTaskbar
+      without changing pinned item order.
+- [ ] Existing per-module TOMLs migrate into a missing grouped config exactly
+      once; later edits use only `taskbar-tools.toml`.
+- [ ] An old `[start-button]` section is ignored without an error.
 
-### TaskbarPin / TrayPin
+### TaskbarPin
 
-- [ ] `pin` items move to the head in configured order after startup.
+- [ ] `pin = ["wezterm"]` moves the observed `org.wezfurlong.wezterm` button to
+      the head.
+- [ ] Other `pin` items move to the head in configured order after startup.
 - [ ] New and manually moved items return pinned items to the head without
       sorting the remaining items.
-- [ ] `pin = ["keypirinha"]` works after Keypirinha is visibly present in the
-      system notification area; no overflow manipulation is expected.
 - [ ] `enabled = false` stops only the intended pin module.
 
 ### CenterTaskbar
@@ -54,18 +69,11 @@ Last run: 2026-10-29, Windows 11 build 26200.8246, vertical left taskbar.
 - [ ] `enabled = false` and Quit restore the original list position.
 - [ ] Primary/secondary bars, four orientations and mixed DPI retain boundaries.
 
-### StartButton
-
-- [ ] The overlay paints on its first and subsequent synchronization passes.
-- [ ] Light/dark PNG and ICO icons render correctly; clicks open Start once.
-- [ ] `enabled = false` and Quit destroy only overlays, never Explorer windows.
-- [ ] Confirm horizontal and vertical padding before implementing in-memory
-      orientation-dependent image margins.
-
 ### HiddenTaskbar
 
+- [ ] Configured hotkey toggles the taskbar with a WezTerm window foreground.
 - [ ] Configured hotkey toggles only the foreground window's monitor.
-- [ ] `general.enabled = false` and Quit restore taskbar/window changes.
+- [ ] `enabled = false` and Quit restore taskbar/window changes.
 
 No daemon was launched and no taskbar/tray/window changes were made during
 automated checks.

@@ -9,12 +9,10 @@ use windows::Win32::System::Com::{
     COINIT_APARTMENTTHREADED,
 };
 use windows::Win32::UI::Accessibility::{
-    CUIAutomation, IUIAutomation, IUIAutomationElement, IUIAutomationInvokePattern,
-    TreeScope_Children, TreeScope_Descendants, UIA_ButtonControlTypeId, UIA_InvokePatternId,
+    CUIAutomation, IUIAutomation, IUIAutomationElement, TreeScope_Children, TreeScope_Descendants,
+    UIA_ButtonControlTypeId,
 };
-use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, FindWindowExW, GetClassNameW, GetWindowRect,
-};
+use windows::Win32::UI::WindowsAndMessaging::{EnumWindows, GetClassNameW, GetWindowRect};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct Rect {
@@ -213,65 +211,6 @@ fn item(element: &IUIAutomationElement) -> Result<UiItem> {
             rect: element.CurrentBoundingRectangle()?.into(),
         })
     }
-}
-
-fn find_descendant(
-    automation: &Automation,
-    hwnd: HWND,
-    predicate: impl Fn(&UiItem) -> bool,
-) -> Result<IUIAutomationElement> {
-    unsafe {
-        let root = automation.uia.ElementFromHandle(hwnd)?;
-        let condition = automation.uia.CreateTrueCondition()?;
-        let elements = root.FindAll(TreeScope_Descendants, &condition)?;
-        for index in 0..elements.Length()? {
-            let element = elements.GetElement(index)?;
-            if item(&element).is_ok_and(|item| predicate(&item)) {
-                return Ok(element);
-            }
-        }
-    }
-    anyhow::bail!("requested UIA element was not found")
-}
-
-/// Invoke Start through its accessibility pattern rather than synthesizing Win+key input.
-pub fn invoke_start(automation: &Automation, bar: HWND) -> Result<()> {
-    let element = find_descendant(automation, bar, |item| {
-        item.automation_id == "StartButton" || item.class_name == "Start"
-    })?;
-    let pattern = unsafe { element.GetCurrentPattern(UIA_InvokePatternId)? };
-    let invoke: IUIAutomationInvokePattern = windows::core::Interface::cast(&pattern)?;
-    unsafe { invoke.Invoke()? };
-    Ok(())
-}
-
-/// Locate Start by UIA on the XAML taskbar, with the Win32 button fallback
-/// used by the legacy taskbar.
-pub fn start_buttons(automation: &Automation) -> Result<Vec<(Taskbar, Rect)>> {
-    let mut result = Vec::new();
-    for bar in taskbars()? {
-        if let Some(item) = automation
-            .descendants_of(bar.hwnd)?
-            .into_iter()
-            .find(|item| {
-                !item.offscreen
-                    && !item.rect.is_empty()
-                    && (item.automation_id == "StartButton" || item.class_name == "Start")
-            })
-        {
-            result.push((bar, item.rect));
-            continue;
-        }
-        let legacy =
-            unsafe { FindWindowExW(Some(bar.hwnd), None, windows::core::w!("Start"), None) };
-        if let Ok(hwnd) = legacy {
-            let mut rect = RECT::default();
-            if unsafe { GetWindowRect(hwnd, &mut rect) }.is_ok() {
-                result.push((bar, rect.into()));
-            }
-        }
-    }
-    Ok(result)
 }
 
 pub fn window_rect(hwnd: HWND) -> Result<Rect> {

@@ -1,3 +1,0 @@
-# Milliseconds between taskbar layout refreshes (minimum 10).
-enabled = true
-poll_ms = 100

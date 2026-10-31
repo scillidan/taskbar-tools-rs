@@ -1,19 +1,33 @@
 mod center_taskbar;
+#[cfg(any(windows, test))]
+mod config;
 mod hidden_taskbar;
-mod start_button;
 mod taskbar_pin;
 #[cfg(windows)]
 mod tray;
-mod tray_pin;
 
 const APP: &str = "taskbar-tools-rs";
 
 #[cfg(windows)]
 static SHUTDOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+#[cfg(windows)]
+static PINS_PAUSED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+#[cfg(windows)]
+static HOTKEYS_SUSPENDED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 #[cfg(windows)]
 pub fn shutting_down() -> bool {
     SHUTDOWN.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+#[cfg(windows)]
+pub fn pins_paused() -> bool {
+    PINS_PAUSED.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+#[cfg(windows)]
+pub fn hotkeys_suspended() -> bool {
+    HOTKEYS_SUSPENDED.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 #[cfg(windows)]
@@ -61,23 +75,20 @@ fn run() -> anyhow::Result<()> {
 #[cfg(windows)]
 fn dump() -> anyhow::Result<()> {
     let automation = taskbar_kit::shell::Automation::new()?;
-    taskbar_pin::dump(&automation)?;
-    tray_pin::dump(&automation)
+    taskbar_pin::dump(&automation)
 }
 
 #[cfg(windows)]
 fn inspect() -> anyhow::Result<()> {
     let automation = taskbar_kit::shell::Automation::new()?;
     taskbar_pin::inspect(&automation)?;
-    center_taskbar::inspect()?;
-    start_button::inspect(&automation)
+    center_taskbar::inspect()
 }
 
 #[cfg(windows)]
 fn once() -> anyhow::Result<()> {
     let automation = taskbar_kit::shell::Automation::new()?;
-    taskbar_pin::once(&automation)?;
-    tray_pin::once(&automation)
+    taskbar_pin::once(&automation)
 }
 
 #[cfg(windows)]
@@ -85,41 +96,52 @@ fn run_daemon() -> anyhow::Result<()> {
     use windows::Win32::UI::HiDpi::{
         SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
     };
-    use windows::Win32::UI::WindowsAndMessaging::{KillTimer, PostQuitMessage, SetTimer};
+    use windows::Win32::UI::WindowsAndMessaging::PostQuitMessage;
 
     let _instance = taskbar_kit::win::ensure_single_instance(APP)?;
     taskbar_kit::win::hide_owned_console();
     // Process-wide: module threads must never race to set this again.
     unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)? };
-    let tray = tray::Tray::new()?;
-    let timer = unsafe { SetTimer(None, 1, 100, None) };
-    if timer == 0 {
-        anyhow::bail!("SetTimer failed");
-    }
+    config::load()?;
+    let mut tray = tray::Tray::new()?;
     let handles = [
         spawn("taskbar-pin", taskbar_pin::run),
-        spawn("tray-pin", tray_pin::run),
         spawn("center-taskbar", center_taskbar::run),
-        spawn("start-button", start_button::run),
         spawn("hidden-taskbar", hidden_taskbar::run),
     ]
     .into_iter()
     .collect::<anyhow::Result<Vec<_>>>()?;
 
     taskbar_kit::message::run(None, |event| {
-        if !matches!(event, taskbar_kit::message::Event::Timer(1)) {
+        if !matches!(event, taskbar_kit::message::Event::Message) {
             return;
         }
         while let Some(command) = tray.poll() {
             let result = match command {
-                tray::Cmd::Edit(file) => tray::edit_config(file),
-                tray::Cmd::TestTaskbar => taskbar_kit::shell::Automation::new()
-                    .and_then(|automation| taskbar_pin::once(&automation)),
-                tray::Cmd::TestTray => taskbar_kit::shell::Automation::new()
-                    .and_then(|automation| tray_pin::once(&automation)),
+                tray::Cmd::ToggleAutostart => tray.toggle_autostart(),
+                tray::Cmd::Reload => config::load().map(|_| {
+                    PINS_PAUSED.store(false, std::sync::atomic::Ordering::Relaxed);
+                }),
+                tray::Cmd::Edit => {
+                    // Shell association lookup may wait on another process's DDE server.
+                    std::thread::spawn(|| {
+                        if let Err(error) = tray::edit_config() {
+                            taskbar_kit::win::message_box(APP, &format!("{error:#}"));
+                        }
+                    });
+                    continue;
+                }
+                tray::Cmd::UnpinAll => {
+                    PINS_PAUSED.store(true, std::sync::atomic::Ordering::Relaxed);
+                    Ok(())
+                }
+                tray::Cmd::ToggleSuspend => {
+                    let suspended = tray.toggle_hotkeys();
+                    HOTKEYS_SUSPENDED.store(suspended, std::sync::atomic::Ordering::Relaxed);
+                    Ok(())
+                }
                 tray::Cmd::Quit => {
                     SHUTDOWN.store(true, std::sync::atomic::Ordering::Relaxed);
-                    start_button::wake_for_shutdown();
                     hidden_taskbar::wake_for_shutdown();
                     unsafe { PostQuitMessage(0) };
                     return;
@@ -130,9 +152,6 @@ fn run_daemon() -> anyhow::Result<()> {
             }
         }
     });
-    unsafe {
-        let _ = KillTimer(None, timer);
-    }
     drop(tray);
     for handle in handles {
         let _ = handle.join();

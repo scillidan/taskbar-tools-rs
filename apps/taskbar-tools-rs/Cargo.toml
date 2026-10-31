@@ -8,7 +8,6 @@ edition.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-image.workspace = true
 serde.workspace = true
 toml.workspace = true
 taskbar-kit = { path = "../../crates/taskbar-kit" }
